@@ -27,25 +27,38 @@ jobs:
     - name: Make Gradle executable
       run: chmod +x ./gradlew
 
-    - name: Build Release APK
-      run: ./gradlew assembleRelease
-      continue-on-error: true
+    - name: Create minimal google-services.json
+      run: |
+        mkdir -p TMessagesProj_App
+        cat > TMessagesProj_App/google-services.json << 'EOF'
+        {
+          "type": "service_account",
+          "project_id": "nekogram-local",
+          "private_key_id": "key-id",
+          "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA2a2rwplg8HhUXiMCLy0/2dKM6nJMb4K1xPt7wgH+3PnzFz9o\n-----END RSA PRIVATE KEY-----\n",
+          "client_email": "firebase-adminsdk@nekogram-local.iam.gserviceaccount.com",
+          "client_id": "123456789",
+          "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+          "token_uri": "https://oauth2.googleapis.com/token",
+          "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+          "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk%40nekogram-local.iam.gserviceaccount.com"
+        }
+        EOF
 
-    - name: Build Debug APK (fallback)
-      if: failure()
+    - name: Build Debug APK
       run: ./gradlew assembleDebug
       continue-on-error: true
 
     - name: Find APK files
       id: find_apk
       run: |
-        if [ -f "TMessagesProj/build/outputs/apk/release/TMessagesProj-release-unsigned.apk" ]; then
-          echo "apk_path=TMessagesProj/build/outputs/apk/release/TMessagesProj-release-unsigned.apk" >> $GITHUB_OUTPUT
-          echo "apk_name=Nekogram-release-unsigned.apk" >> $GITHUB_OUTPUT
-          echo "build_type=release" >> $GITHUB_OUTPUT
+        if [ -f "TMessagesProj_App/build/outputs/apk/debug/TMessagesProj_App-debug.apk" ]; then
+          echo "apk_path=TMessagesProj_App/build/outputs/apk/debug/TMessagesProj_App-debug.apk" >> $GITHUB_OUTPUT
+          echo "apk_name=Nekogram-debug-$(date +%Y%m%d-%H%M%S).apk" >> $GITHUB_OUTPUT
+          echo "build_type=debug" >> $GITHUB_OUTPUT
         elif [ -f "TMessagesProj/build/outputs/apk/debug/TMessagesProj-debug.apk" ]; then
           echo "apk_path=TMessagesProj/build/outputs/apk/debug/TMessagesProj-debug.apk" >> $GITHUB_OUTPUT
-          echo "apk_name=Nekogram-debug.apk" >> $GITHUB_OUTPUT
+          echo "apk_name=Nekogram-debug-$(date +%Y%m%d-%H%M%S).apk" >> $GITHUB_OUTPUT
           echo "build_type=debug" >> $GITHUB_OUTPUT
         else
           echo "apk_path=" >> $GITHUB_OUTPUT
@@ -73,14 +86,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Failure Notification
-      if: failure() && steps.find_apk.outputs.apk_path == ''
-      run: |
-        echo "❌ Build failed - No APK generated"
-        exit 1
-
     - name: Build Success Summary
-      if: always() && steps.find_apk.outputs.apk_path != ''
+      if: success() && steps.find_apk.outputs.apk_path != ''
       run: |
         echo "## ✅ Build Successful" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -89,3 +96,11 @@ jobs:
         echo "- **Branch:** ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Actor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+
+    - name: Build Failure Summary
+      if: failure() || steps.find_apk.outputs.apk_path == ''
+      run: |
+        echo "## ❌ Build Failed" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch:** ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
